@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import 'katex/dist/katex.min.css';
 import Latex from "react-latex-next";
-import { CheckCircle, Clock, FileText, Settings, ArrowRight, ArrowLeft, Eye, Trash2, Save, Plus } from "lucide-react";
+import { CheckCircle, Clock, FileText, Settings, ArrowRight, ArrowLeft, Eye, Trash2, Save, Plus, RotateCcw, AlertTriangle, ChevronDown, Edit } from "lucide-react";
 
 export default function AdminQueueTab() {
   const [papers, setPapers] = useState<any[]>([]);
@@ -35,6 +35,66 @@ export default function AdminQueueTab() {
   const handleReview = async (paper: any) => {
     setSelectedPaper(paper);
     fetchQuestions(paper.source_id);
+  };
+
+  const handleStartOCR = async (paperId: string) => {
+    setProcessingId(paperId);
+    try {
+      const res = await fetch("/api/admin/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQueue();
+      } else {
+        alert("OCR Error: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleUpdateStatus = async (paperId: string, status: string) => {
+    try {
+      const res = await fetch("/api/qbank/admin/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperId, status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQueue();
+      } else {
+        alert("Status Update Error: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUpdateUrl = async (paperId: string) => {
+    const newUrl = prompt("Enter the new public PDF URL:");
+    if (!newUrl) return;
+
+    try {
+      const res = await fetch("/api/admin/ocr/update-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperId, fileUrl: newUrl }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQueue();
+      } else {
+        alert("Update Error: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchQuestions = async (paperId: string) => {
@@ -476,22 +536,76 @@ Use this exact structure:
                 </div>
               </div>
 
-              <div className="mt-4 md:mt-0 flex items-center gap-2">
-                {p.approval_status === "PENDING" && (
-                  <>
-                    <button onClick={() => handleReview(p)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors shadow-sm">
-                      <FileText className="w-4 h-4" /> Review & Extract <ArrowRight className="w-4 h-4" />
+              <div className="mt-4 md:mt-0 flex items-center gap-3">
+                {/* Status Switcher Dropdown */}
+                <div className="relative group">
+                  <select
+                    className="appearance-none pl-3 pr-8 py-2 bg-gray-100 dark:bg-slate-800 midnight:bg-slate-900 border border-gray-200 dark:border-gray-700 midnight:border-gray-800 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-300 midnight:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-colors hover:bg-gray-200 dark:hover:bg-slate-700"
+                    value={p.approval_status}
+                    onChange={(e) => handleUpdateStatus(p.source_id, e.target.value)}
+                  >
+                    <option value="PENDING">Pending</option>
+                    <option value="OCR_QUEUED">OCR Queued</option>
+                    <option value="OCR_PROCESSING">OCR Processing</option>
+                    <option value="PENDING_Q_APPROVAL">Review Ready</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="OCR_FAILED">OCR Failed</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500" />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {p.approval_status === "PENDING" && (
+                    <>
+                      <button 
+                        onClick={() => handleStartOCR(p.source_id)} 
+                        disabled={processingId === p.source_id}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                      >
+                        <Settings className={`w-4 h-4 ${processingId === p.source_id ? 'animate-spin' : ''}`} /> 
+                        Start OCR
+                      </button>
+                      <button onClick={() => handleReview(p)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors shadow-sm">
+                        <FileText className="w-4 h-4" /> Manual Review <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleReject(p.source_id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Reject">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  {(p.approval_status === "OCR_QUEUED" || p.approval_status === "OCR_PROCESSING") && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-lg text-sm font-medium border border-amber-200 dark:border-amber-800 animate-pulse">
+                      <Clock className="w-4 h-4" /> {p.approval_status === "OCR_QUEUED" ? "Queued..." : "Processing..."}
+                    </div>
+                  )}
+                  {p.approval_status === "OCR_FAILED" && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg text-xs font-medium border border-red-200 dark:border-red-800">
+                        <AlertTriangle className="w-4 h-4" /> Failed
+                      </div>
+                      <button 
+                        onClick={() => handleUpdateUrl(p.source_id)}
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium transition-colors border border-blue-200 dark:border-blue-800"
+                        title="Edit URL"
+                      >
+                        <Edit className="w-4 h-4" /> Edit Link
+                      </button>
+                      <button 
+                        onClick={() => handleUpdateStatus(p.source_id, 'PENDING')}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <RotateCcw className="w-4 h-4" /> Retry
+                      </button>
+
+                    </div>
+                  )}
+                  {p.approval_status === "PENDING_Q_APPROVAL" && (
+                    <button onClick={() => handleReview(p)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors shadow-sm">
+                      <CheckCircle className="w-4 h-4" /> Final Review <ArrowRight className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleReject(p.source_id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Reject">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
-                {p.approval_status === "PENDING_Q_APPROVAL" && (
-                  <button onClick={() => handleReview(p)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors shadow-sm">
-                    <CheckCircle className="w-4 h-4" /> Final Review <ArrowRight className="w-4 h-4" />
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           ))}

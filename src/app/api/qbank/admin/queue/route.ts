@@ -12,7 +12,7 @@ export async function GET() {
     }
     const pool = getDbPool();
     const { rows } = await pool.query(
-      `SELECT * FROM papers_archive WHERE approval_status IN ('PENDING', 'OCR_PROCESSING', 'PENDING_Q_APPROVAL') ORDER BY created_at DESC`
+      `SELECT * FROM papers_archive WHERE approval_status IN ('PENDING', 'OCR_QUEUED', 'OCR_PROCESSING', 'PENDING_Q_APPROVAL', 'OCR_FAILED') ORDER BY created_at DESC`
     );
     return NextResponse.json({ success: true, data: rows });
   } catch (error: any) {
